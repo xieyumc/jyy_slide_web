@@ -16,6 +16,46 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt # Ensure this is imported
+from .ai_service import get_topic_tree, generate_slide_outline
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def ai_topic_expand(request):
+    keywords = request.POST.get('keywords', '').strip()
+    if not keywords:
+        return JsonResponse({'error': 'Keywords are required'}, status=400)
+
+    response_data = get_topic_tree(keywords)
+    if isinstance(response_data, dict) and 'error' in response_data:
+        # Consider specific status codes based on error type if desired later
+        # For now, a general 500 for service-side errors.
+        # If error indicates API key is missing, 503 might also be suitable.
+        return JsonResponse(response_data, status=500) 
+    return JsonResponse(response_data)
+
+@login_required
+@require_POST
+@csrf_exempt
+def ai_generate_outline(request):
+    topic = request.POST.get('topic', '').strip()
+    # existing_content = request.POST.get('existing_content', '') # Optional
+    if not topic:
+        return JsonResponse({'error': 'Topic is required'}, status=400)
+
+    # Optional: retrieve existing_content if you plan to send it
+    # existing_content = request.POST.get('existing_content', '') 
+    
+    response_data = generate_slide_outline(topic) # Pass existing_content if retrieved
+
+    if isinstance(response_data, dict) and 'error' in response_data:
+        return JsonResponse(response_data, status=500)
+    
+    # If no error, response_data is the list of outline strings
+    return JsonResponse({'outline': response_data})
+
 
 @login_required
 def upload_image(request):

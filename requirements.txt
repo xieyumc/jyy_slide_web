@@ -14,3 +14,4 @@ channels
 daphne
 twisted[http2,tls]
 psycopg2-binary
+google-generativeai
