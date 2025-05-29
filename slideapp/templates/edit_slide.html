@@ -5,18 +5,89 @@
     <style>
         body {
             display: flex;
+            flex-direction: column; /* Changed for toolbar and main content stacking */
             height: 100vh;
             margin: 0;
         }
 
+        /* Container for editor and preview, and AI panel */
+        .main-area {
+            display: flex;
+            flex-grow: 1; /* Takes remaining height */
+            overflow: hidden; /* Prevents content from overflowing body */
+        }
+
+        #editor-preview-container {
+            display: flex;
+            flex-grow: 1; /* Takes available width */
+        }
+
         #editor {
-            width: 50%;
+            width: 50%; /* Takes 50% of editor-preview-container */
             height: 100%;
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
         }
 
         #preview {
-            width: 50%;
+            width: 50%; /* Takes 50% of editor-preview-container */
             height: 100%;
+            box-sizing: border-box;
+        }
+
+        #ai-feature-panel {
+            width: 250px; /* Fixed width for the AI panel */
+            padding: 10px;
+            border-left: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto; /* Allows scrolling if content exceeds height */
+            background-color: #f0f0f0; /* Light gray background for distinction */
+        }
+
+        #ai-feature-panel h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #333;
+        }
+
+        #ai-feature-panel label {
+            margin-top: 10px;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        #ai-feature-panel input[type="text"],
+        #ai-feature-panel button {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box; /* Ensures padding doesn't expand width */
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #ai-feature-panel button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #ai-feature-panel button:hover {
+            background-color: #0056b3;
+        }
+
+        #ai-topic-tree {
+            flex-grow: 1; /* Takes available space in the panel */
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+            min-height: 150px; /* Minimum height for usability */
         }
 
         iframe {
@@ -54,9 +125,30 @@
     <button class="return-button" onclick="location.href='{% url 'index' %}'">返回主页</button>
 </div>
 
-<textarea id="editor"></textarea>
-<div id="preview">
-    <iframe id="preview-iframe"></iframe>
+<div class="main-area">
+    <div id="editor-preview-container">
+        <textarea id="editor"></textarea>
+        <div id="preview">
+            <iframe id="preview-iframe"></iframe>
+        </div>
+    </div>
+    <div id="ai-feature-panel">
+        <h3>AI Topic Expansion</h3>
+        
+        <label for="ai-keywords">Keywords:</label>
+        <input type="text" id="ai-keywords" placeholder="Enter keywords...">
+        
+        <button id="ai-expand-topic-btn">Expand Topic</button>
+        
+        <label for="ai-topic-tree">Topic Tree:</label>
+        <div id="ai-topic-tree">
+            <!-- Topic tree will be populated here by JavaScript -->
+        </div>
+        
+        <div id="ai-feedback-message" style="color: red; font-size: 0.9em; margin-bottom: 10px; min-height: 1.2em;"></div>
+        
+        <button id="ai-generate-outline-btn">Generate Outline</button>
+    </div>
 </div>
 
 <!-- 引入 jQuery -->
@@ -394,6 +486,171 @@
 
     // 初始设置光标位置事件
     onCursorPositionChange();
+
+    // AI Feature Panel JavaScript
+    const keywordsInput = document.getElementById('ai-keywords');
+    const expandTopicBtn = document.getElementById('ai-expand-topic-btn');
+    const topicTreeDiv = document.getElementById('ai-topic-tree');
+    const generateOutlineBtn = document.getElementById('ai-generate-outline-btn');
+    const aiFeedbackMessage = document.getElementById('ai-feedback-message'); // Added selector
+    // 'editor' variable is already defined above: const editor = document.getElementById('editor');
+    // 'csrftoken' variable is already defined above
+
+    let selectedTopicElement = null; // Keep track of the selected topic element
+
+    function renderTree(data, container) {
+        container.innerHTML = ''; // Clear previous tree
+        if (!data || !data.topic) { // Handle empty or invalid data
+            container.innerHTML = '<p style="color: gray;">No topic data to display.</p>';
+            return;
+        }
+        const rootUl = document.createElement('ul');
+        rootUl.style.listStyleType = 'none';
+        rootUl.style.paddingLeft = '0';
+        appendTreeNode(data, rootUl);
+        container.appendChild(rootUl);
+    }
+
+    function appendTreeNode(nodeData, parentUl) {
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.textContent = nodeData.topic;
+        span.className = 'topic-item';
+        span.dataset.topic = nodeData.topic; 
+        span.style.cursor = 'pointer';
+        span.style.padding = '2px 5px'; // Add some padding for better clickability
+        span.style.display = 'block'; // Make span take full width of li for easier clicking
+        
+        span.addEventListener('click', function(event) {
+            event.stopPropagation();
+            if (selectedTopicElement) {
+                selectedTopicElement.style.fontWeight = 'normal';
+                selectedTopicElement.style.backgroundColor = 'transparent';
+            }
+            this.style.fontWeight = 'bold';
+            this.style.backgroundColor = '#e0e0e0'; // Highlight style
+            selectedTopicElement = this;
+            // console.log('Selected topic:', this.dataset.topic);
+        });
+        
+        li.appendChild(span);
+
+        if (nodeData.children && nodeData.children.length > 0) {
+            const childrenUl = document.createElement('ul');
+            childrenUl.style.listStyleType = 'none';
+            childrenUl.style.paddingLeft = '20px'; // Indentation for children
+            nodeData.children.forEach(childNode => {
+                appendTreeNode(childNode, childrenUl);
+            });
+            li.appendChild(childrenUl);
+        }
+        parentUl.appendChild(li);
+    }
+
+    function insertOutlineIntoEditor(outlineLines) {
+        // editor is globally available
+        const outlineText = outlineLines.join('\n');
+        if (editor.value.trim() !== '') {
+            editor.value += '\n\n' + outlineText;
+        } else {
+            editor.value = outlineText;
+        }
+        // Trigger input event for WebSocket preview to update
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    expandTopicBtn.addEventListener('click', function() {
+        const keywords = keywordsInput.value.trim();
+        if (!keywords) {
+            alert('Please enter keywords for topic expansion.');
+            return;
+        }
+
+        topicTreeDiv.innerHTML = '<p style="color: gray;">Loading topic tree...</p>'; // Loading state
+        if (aiFeedbackMessage) aiFeedbackMessage.textContent = ''; // Clear previous messages
+
+        fetch('{% url "ai_topic_expand" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrftoken 
+            },
+            body: new URLSearchParams({'keywords': keywords})
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => { // Try to parse error from backend
+                    throw new Error(errData.error || ('Network response was not ok: ' + response.statusText));
+                }).catch(() => { // If parsing error fails, use generic message
+                     throw new Error('Network response was not ok: ' + response.statusText + ' and no error details from server.');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                console.error('Service Error (Topic Expand):', data.error);
+                if (aiFeedbackMessage) aiFeedbackMessage.textContent = 'Error: ' + data.error;
+                topicTreeDiv.innerHTML = ''; // Clear tree display
+            } else {
+                if (aiFeedbackMessage) aiFeedbackMessage.textContent = ''; // Clear error message
+                renderTree(data, topicTreeDiv);
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching topic tree:', error);
+            if (aiFeedbackMessage) aiFeedbackMessage.textContent = 'Failed to fetch topic tree: ' + error.message;
+            topicTreeDiv.innerHTML = ''; // Clear tree display
+        });
+    });
+
+    generateOutlineBtn.addEventListener('click', function() {
+        if (!selectedTopicElement) {
+            // Using alert for this specific UI interaction feedback is fine
+            alert('Please select a topic from the tree first.');
+            return;
+        }
+        const selectedTopic = selectedTopicElement.dataset.topic;
+        if (aiFeedbackMessage) aiFeedbackMessage.textContent = ''; // Clear previous messages
+
+        // Optional: Add a loading state indication here if needed
+
+        fetch('{% url "ai_generate_outline" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrftoken 
+            },
+            body: new URLSearchParams({'topic': selectedTopic})
+        })
+        .then(response => {
+            if (!response.ok) {
+                 return response.json().then(errData => {
+                    throw new Error(errData.error || ('Network response was not ok: ' + response.statusText));
+                }).catch(() => {
+                     throw new Error('Network response was not ok: ' + response.statusText + ' and no error details from server.');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                console.error('Service Error (Generate Outline):', data.error);
+                if (aiFeedbackMessage) aiFeedbackMessage.textContent = 'Error: ' + data.error;
+            } else if (data.outline) {
+                if (aiFeedbackMessage) aiFeedbackMessage.textContent = ''; // Clear error message
+                insertOutlineIntoEditor(data.outline);
+            } else {
+                // This case should ideally not happen if backend is consistent
+                if (aiFeedbackMessage) aiFeedbackMessage.textContent = 'Received unexpected data from server.';
+            }
+        })
+        .catch(error => {
+            console.error('Error generating outline:', error);
+            if (aiFeedbackMessage) aiFeedbackMessage.textContent = 'Failed to generate outline: ' + error.message;
+        });
+    });
+
 </script>
 </body>
 </html>
